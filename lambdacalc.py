@@ -10,7 +10,9 @@ class TokT(Enum):
     LAMBD = 2
     VNAME = 3
     SEPAR = 4
-    ENDST = 5
+    APPLY = 5
+    ENDST = 6
+    ERROR = 7
 
 
 TokStream = list[tuple[TokT, str]]
@@ -22,7 +24,7 @@ def lex(stream: str) -> TokStream:
     This is really simple, ugly code but it works.
     """
     toks = []
-    reading_name = []
+    reading_name: list[str] = []
     for c in stream:
         if not c.isalpha():
             if len(reading_name) > 0:
@@ -39,6 +41,8 @@ def lex(stream: str) -> TokStream:
             toks.append((TokT.LAMBD, c))
         elif c == ".":
             toks.append((TokT.SEPAR, c))
+        elif c == "/":
+            toks.append((TokT.APPLY, c))
         elif c.isalpha():
             reading_name.append(c)
             continue

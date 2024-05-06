@@ -1,18 +1,18 @@
 #!/usr/bin/python
 from enum import Enum
 from functools import wraps
-from typing import Iterator, cast
+from typing import Any
 
 
 class TokT(Enum):
     BRACO = 1
-    BRACC = 1
-    LAMBD = 2
-    VNAME = 3
-    SEPAR = 4
-    APPLY = 5
-    ENDST = 6
-    ERROR = 7
+    BRACC = 2
+    LAMBD = 3
+    VNAME = 4
+    SEPAR = 5
+    APPLY = 6
+    ENDST = 7
+    ERROR = 8
 
 
 TokStream = list[tuple[TokT, str]]
@@ -65,30 +65,34 @@ class Parser:
     """
     Recursive-descent parser for lambda calc expressions.
     This is put into a class because it has a bunch of internal state.
+    Because I suck at this and recursive descent is kind of finnicky, this
+    parser is basically "maximal munch" (everything associates left).
     """
 
     def __init__(self, stream: TokStream) -> None:
         self.stream = iter(stream)
         self.bindings: set[str] = set()
         self.ctok: tuple[TokT, str] = next(self.stream)
-        self.peek: tuple[TokT, str] = next(self.stream, (TokT.ENDST, ""))
 
     def die(self, msg: str):
-        raise SyntaxError(msg)
+        raise SyntaxError(f"{msg} @ '{self.ctok[1]}' ({self.ctok[0]})")
 
     def next_tok(self):
-        self.ctok = self.peek
-        self.peek = next(self.stream, (TokT.ENDST, ""))
+        self.ctok = next(self.stream)
 
     @staticmethod
     def subexpr_parser(parser):
         """
-        Mostly for debugging and tracing
+        Decorator to indicate it's part of the actual recursive-descent parsing
+        routines.
         """
         @wraps(parser)
         def inner(self, *args, **kwargs):
-            print(parser.__name__, self.ctok, self.peek)
-            return parser(self, *args, **kwargs)
+            print(parser.__name__, self.ctok)
+            try:
+                return parser(self, *args, **kwargs)
+            except StopIteration:
+                return None
 
         return inner
 
@@ -96,24 +100,26 @@ class Parser:
     def parse_expr(self):
         node = []
 
-        # Either abstraction or application!
-        if self.ctok[0] == TokT.VNAME:
-            node = self.parse_var(False)
-        elif self.ctok[0] == TokT.LAMBD:
-            node = self.parse_lambda()
-        elif self.ctok[0] == TokT.BRACO:
-            self.parse_brac()
-            node = self.parse_expr()
-            self.parse_brac()
+        while self.ctok[0] == TokT.VNAME or self.ctok[0] == TokT.LAMBD or self.ctok[0] == TokT.BRACO:
+            curnode = []
+            if self.ctok[0] == TokT.VNAME:
+                curnode = self.parse_var(False)
+            elif self.ctok[0] == TokT.LAMBD:
+                curnode = self.parse_lambda()
+            elif self.ctok[0] == TokT.BRACO:
+                self.parse_brac()
+                curnode = self.parse_expr()
+                self.parse_brac()
+            node = curnode if len(node) == 0 else [AstT.APPLY, node, curnode]
 
         return node
 
     @subexpr_parser
     def parse_lambda(self):
         if self.ctok[0] != TokT.LAMBD:
-            self.die("expected lambda")
+            self.die(f"expected lambda")
         self.next_tok()
-        node = [AstT.ABSTR]
+        node: list[AstT | Any] = [AstT.ABSTR]
         node.append(self.parse_var(True))
         self.parse_dot()
         node.append(self.parse_expr())
@@ -149,5 +155,5 @@ class Parser:
         return node
 
 
-parser = Parser(lex("\\f. \\x. (f/x)"))
+parser = Parser(lex("(\\f.f f)(\\ff.\\x.ff ff x)"))
 print(parser.parse_expr())

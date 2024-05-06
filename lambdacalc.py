@@ -10,7 +10,7 @@ class TokT(Enum):
     LAMBD = 2
     VNAME = 3
     SEPAR = 4
-    ERROR = 5
+    ENDST = 5
 
 
 TokStream = list[tuple[TokT, str]]
@@ -24,6 +24,11 @@ def lex(stream: str) -> TokStream:
     toks = []
     reading_name = []
     for c in stream:
+        if not c.isalpha():
+            if len(reading_name) > 0:
+                toks.append((TokT.VNAME, "".join(reading_name)))
+            reading_name.clear()
+
         if c.isspace():
             continue
         elif c == "(":
@@ -39,11 +44,6 @@ def lex(stream: str) -> TokStream:
             continue
         else:
             toks.append((TokT.ERROR, ""))
-
-        if not c.isalpha():
-            if len(reading_name) > 0:
-                toks.append((TokT.VNAME, "".join(reading_name)))
-            reading_name.clear()
 
     if len(reading_name) > 0:
         toks.append((TokT.VNAME, "".join(reading_name)))
@@ -64,68 +64,70 @@ class Parser:
     """
 
     def __init__(self, stream: TokStream) -> None:
-        self.stream = stream
+        self.stream = iter(stream)
         self.bindings: set[str] = set()
-        self.ctok: tuple[TokT, str] = cast(tuple[TokT, str], (None, None))
-        self.peek: tuple[TokT, str] = next(self.stream)
+        self.ctok: tuple[TokT, str] = next(self.stream)
+        self.peek: tuple[TokT, str] = next(self.stream, (TokT.ENDST, ""))
 
     def die(self, msg: str):
         raise SyntaxError(msg)
 
+    def next_tok(self):
+        self.ctok = self.peek
+        self.peek = next(self.stream, (TokT.ENDST, ""))
+
     @staticmethod
-    def subexpr_parser(consume=True):
+    def subexpr_parser(parser):
         """
-        Helpful decorator for all subexpression parsers and advances to the
-        next token (unless you tell it not to).
+        Mostly for debugging and tracing
         """
+        @wraps(parser)
+        def inner(self, *args, **kwargs):
+            print(parser.__name__, self.ctok, self.peek)
+            return parser(self, *args, **kwargs)
 
-        def subexpr_parser_(parser):
-            @wraps(parser)
-            def inner(self, *args, **kwargs):
-                if consume:
-                    self.ctok = self.peek
-                    self.peek = next(self.stream)
-                print(parser.__name__, self.ctok, self.peek)
-                return parser(self, *args, **kwargs)
+        return inner
 
-            return inner
-
-        return subexpr_parser_
-
-    @subexpr_parser(False)
+    @subexpr_parser
     def parse_expr(self):
         node = []
 
         # Either abstraction or application!
-        if self.peek[0] == TokT.LAMBD:
-            node.append(AstT.ABSTR)
-            node.append(self.parse_lambda())
-        elif self.peek[0] == TokT.BRACO:
+        if self.ctok[0] == TokT.VNAME:
+            node = self.parse_var(False)
+        elif self.ctok[0] == TokT.LAMBD:
+            node = self.parse_lambda()
+        elif self.ctok[0] == TokT.BRACO:
             self.parse_brac()
-            node.append(self.parse_expr())
+            node = self.parse_expr()
             self.parse_brac()
 
         return node
 
-    @subexpr_parser()
+    @subexpr_parser
     def parse_lambda(self):
+        if self.ctok[0] != TokT.LAMBD:
+            self.die("expected lambda")
+        self.next_tok()
         node = [AstT.ABSTR]
-        node.append(self.parse_var(is_binder=True))
+        node.append(self.parse_var(True))
         self.parse_dot()
         node.append(self.parse_expr())
         return node
 
-    @subexpr_parser()
+    @subexpr_parser
     def parse_dot(self):
         if self.ctok[0] != TokT.SEPAR:
             self.die("expected seperator")
+        self.next_tok()
 
-    @subexpr_parser()
+    @subexpr_parser
     def parse_brac(self):
         if self.ctok[0] != TokT.BRACO and self.ctok[0] != TokT.BRACC:
             self.die("expected bracket")
+        self.next_tok()
 
-    @subexpr_parser()
+    @subexpr_parser
     def parse_var(self, is_binder: bool):
         if self.ctok[0] != TokT.VNAME:
             self.die("expected name")
@@ -138,9 +140,10 @@ class Parser:
             if self.ctok[1] not in self.bindings:
                 self.die("bad reference")
 
-        return [AstT.NAME, self.ctok[1]]
+        node = [AstT.NAME, self.ctok[1]]
+        self.next_tok()
+        return node
 
 
-print(list(lex(iter("\\x. x"))))
-parser = Parser(lex(iter("\\x.x")))
+parser = Parser(lex("\\f. \\x. (f/x)"))
 print(parser.parse_expr())

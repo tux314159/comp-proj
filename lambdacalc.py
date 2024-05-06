@@ -78,9 +78,10 @@ class Parser:
     @staticmethod
     def subexpr_parser(parser):
         """Decorator for _all_ parsing subroutines."""
+
         @wraps(parser)
         def inner(self, *args, **kwargs):
-            #print(parser.__name__, self.ctok)
+            # print(parser.__name__, self.ctok)
             return parser(self, *args, **kwargs)
 
         return inner

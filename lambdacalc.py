@@ -1,7 +1,6 @@
 #!/usr/bin/python
 from enum import Enum
 from functools import reduce, wraps
-from typing import Any
 
 
 class TokT(Enum):
@@ -14,13 +13,10 @@ class TokT(Enum):
     ERROR = 7
 
 
-TokStream = list[tuple[TokT, str]]
-
-
-def lex(stream: str) -> TokStream:
+def lex(stream):
     """Tokenise input stream into a stream of tokens."""
     toks = []
-    reading_name: list[str] = []
+    reading_name = []
     for c in stream:
         # This is quite ugly lol but it works
         if not c.isalpha():
@@ -64,18 +60,17 @@ class Parser:
     Note that everything associates left by default.
     """
 
-    def __init__(self, stream: TokStream) -> None:
+    def __init__(self, stream):
         self.stream = iter(stream)  # our token stream
-        self.bindings: list[set[str]] = []  # variable binding stack
-        self.ctok: tuple[TokT, str] = next(self.stream)  # current token
+        self.bindings = []  # variable binding stack
+        self.ctok = next(self.stream)  # current token
 
-    def die(self, msg: str):
+    def die(self, msg):
         raise SyntaxError(f"{msg} @ '{self.ctok[1]}' ({self.ctok[0]})")
 
     def next_tok(self):
         self.ctok = next(self.stream)
 
-    @staticmethod
     def subexpr_parser(parser):
         """Decorator for _all_ parsing subroutines."""
 
@@ -121,7 +116,7 @@ class Parser:
         self.bindings.append(set())
 
         # Parse
-        node: list[AstT | Any] = [AstT.ABSTR]
+        node = [AstT.ABSTR]
         self.next_tok()
         node.append(self.parse_var(is_bind=True))
         self.parse_dot()
@@ -145,7 +140,7 @@ class Parser:
         self.next_tok()
 
     @subexpr_parser
-    def parse_var(self, is_bind: bool):
+    def parse_var(self, is_bind):
         if self.ctok[0] != TokT.VNAME:
             self.die("expected name")
 
@@ -163,6 +158,5 @@ class Parser:
         return node
 
 
-print(lex("(\\f.f f)(\\f.\\x.f f x)"))
-print(Parser(lex("(\\f.f f)(\\f.\\x.f f x)")).parse())
-print(Parser(lex("\\f.f")).parse())
+
+print(Parser(lex("(\\x. x) x")).parse())
